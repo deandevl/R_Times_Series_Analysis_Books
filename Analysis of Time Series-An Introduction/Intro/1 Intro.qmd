@@ -1,0 +1,279 @@
+---
+title: "Analysis of Time Series-An Introduction"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: false
+    number-offset: 0
+    self-contained: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes/scripts/plots are inspired by the book [The Analysis of Time Series: An Introduction](http://www.ams.sunysb.edu/~xing/tsRbook/index.html) by Chris Chatfield and Haipeng Xing"  
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(data.table)
+library(magrittr)
+library(here)
+library(hms)
+library(ggplot2)
+library(grid)
+library(gtable)
+library(tseries)
+library(lubridate)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+# 1 Introduction
+
+## 1.1 Some Representative Time Series
+
+::: topic
+Classic Beveridge wheat price index series
+:::
+
+Info on the classic Beveridge wheat price index series `tseries::bev`.
+
+```{r}
+data(bev, package = "tseries") # set the data
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(bev)$stats,
+  container_width_px = 700
+)
+```
+
+```{r}
+#| fig-width: 10
+#| fig-cap: Beveridge Wheat Price Index, 1500 to 1869
+
+wheat_index_dt <- RtsaPkg::tsObj_to_dt(bev)
+RplotterPkg::create_scatter_plot(
+  df = wheat_index_dt,
+  aes_x = "time",
+  aes_y = "value",
+  x_title = "Year",
+  y_title = "Price Index",
+  rot_y_tic_label = TRUE,
+  line_color = "purple",
+  x_limits = as.Date(c("1499-01-01", "1870-01-01")),
+  x_major_breaks = seq.Date(from = as.Date("1450-1-1"), to = as.Date("1900-1-1"), by = "50 year"),
+  x_date_labels = "%Y",
+  y_limits = c(0, 500),
+  show_pts = FALSE,
+  connect = TRUE
+)
+```
+
+::: topic
+Closing prices of S&P 500 index
+:::
+
+```{r}
+apath <- file.path(here::here(), "Analysis of Time Series-An Introduction", "data", "sp500_1995-2016.csv")
+s_p_500_dt <- data.table::fread(apath) %>% 
+  .[, Date := as.Date(Date, format = "%m/%d/%y")]
+```
+
+```{r}
+#| fig-width: 10 
+#| fig-cap: S & P 500 Closing Index, Jan 4, 1995 to Dec 30, 2016
+
+RplotterPkg::create_scatter_plot(
+  df = s_p_500_dt,
+  aes_x = "Date",
+  aes_y = "Return",
+  x_limits = as.Date(c("1995-01-01", "2017-01-01")),
+  x_major_date_breaks = "2 year",
+  x_date_labels = "%b %Y",
+  x_title = "Day",
+  y_title = "Daily Return",
+  rot_y_tic_label = TRUE,
+  line_width = 0.6,
+  line_color = "purple",
+  show_pts = FALSE,
+  connect = TRUE
+)
+```
+
+::: topic
+Air temperature in Anchorage, Alaska
+:::
+
+```{r}
+apath <- file.path(here::here(), "Analysis of Time Series-An Introduction", "data", "alaska_temp_1951-2016.csv")
+alaska_temps_dt <- data.table::fread(apath) %>% 
+  .[, Date := paste(substring(as.character(Date), 1, 4), substring(as.character(Date), 5, 6), "01", sep = "-")] %>% 
+  .[, Date := as.Date(Date)]
+```
+
+```{r}
+#| fig-width: 10 
+#| fig-cap: Monthly Average Temperature in Anchorage, Alaska, Jan 1, 2001 to Dec 31, 2016 (deg C)
+
+RplotterPkg::create_scatter_plot(
+  df = alaska_temps_dt,
+  aes_x = "Date",
+  aes_y = "Celsius",
+  x_title = "Date",
+  y_title = "Average Temperature",
+  rot_y_tic_label = TRUE,
+  line_color = "darkgreen",
+  x_limits = as.Date(c("2001-01-01", "2016-12-31")),
+  x_major_date_breaks = "1 year",
+  x_date_labels = "%Y",
+  show_pts = FALSE,
+  connect = TRUE
+)
+```
+
+::: topic
+Domestic sales of Australian wine
+:::
+
+```{r}
+apath <- file.path(here::here(), "Analysis of Time Series-An Introduction", "data", "aus_wine_sales.csv")
+wine_sales_dt <- data.table::fread(apath) %>% 
+  data.table::setnames(old = c("V1","V2"), new = c("Date","Sales")) %>% 
+  .[, Date := paste(substring(Date, 5, 8), substring(Date, 1, 3), "01", sep = "-")] %>% 
+  .[, Date := as.Date(Date, format = "%Y-%b-%d")]
+```
+
+```{r}
+#| fig-width: 10  
+#| fig-cap: Domestic Sales of Australian Wine, March 1985 to June 2014 by quarter
+
+RplotterPkg::create_scatter_plot(
+  df = wine_sales_dt,
+  aes_x = "Date",
+  aes_y = "Sales",
+  x_title = "Date",
+  rot_y_tic_label = TRUE,
+  line_width = 0.6,
+  x_limits = as.Date(c("1985-01-01", "2015-01-01")),
+  x_major_date_breaks = "2 year",
+  x_date_labels = "%Y",
+  show_pts = FALSE,
+  connect = TRUE
+)
+```
+
+::: topic
+Total population and birth rate for the US
+:::
+
+```{r}
+apath <- file.path(here::here(), "Analysis of Time Series-An Introduction", "data", "US_pop_birthrate.csv")
+birth_pop_dt <- data.table::fread(apath) %>% 
+  data.table::setnames(old = c("DATE","populaton","birthrate(per1000)"), new = c("Date","Population","BirthRate")) %>% 
+  .[, `:=`(Date = as.Date(lubridate::parse_date_time2(Date,"m/d/y",cutoff_2000 = 16L)), Population = Population/10000000)]
+```
+
+```{r}
+#| fig-width: 15 
+#| fig-cap: Total Yearly BirthRate/Population for the US, (Pop x 10 million) 1960 to 2015
+
+population_plot <- RplotterPkg::create_scatter_plot(
+  df = birth_pop_dt[, .(Date, Population)],
+  aes_x = "Date",
+  aes_y = "Population",
+  y_title = "Population",
+  rot_y_tic_label = TRUE,
+  line_width = 0.6,
+  connect = TRUE,
+  hide_x_tics = TRUE,
+  x_limits = as.Date(c("1960-01-01", "2015-01-01")),
+  x_major_date_breaks = "2 year"
+)
+birth_plot <- RplotterPkg::create_scatter_plot(
+  df = birth_pop_dt[, .(Date, BirthRate)],
+  aes_x = "Date",
+  aes_y = "BirthRate",
+  x_title = "Year",
+  y_title = "Birth Rate",
+  rot_y_tic_label = TRUE,
+  line_width = 0.6,
+  connect = TRUE,
+  x_limits = as.Date(c("1960-01-01", "2015-01-01")),
+  x_major_date_breaks = "2 year",
+  x_date_labels = "%Y",
+)
+layout <- list(
+  plots = list(population_plot,birth_plot),
+  rows = c(1,2),
+  cols = c(1,1)
+)
+RplotterPkg::multi_panel_grid(
+  layout = layout,
+  col_widths = 32,
+  row_heights = c(6,6)
+)
+```
+
+::: topic
+Prices and volumes of IBM stocks
+:::
+
+```{r}
+apath <- file.path(here::here(), "Analysis of Time Series-An Introduction", "data", "taq_trade_ibm_100104.txt")
+ibm_trade_dt <- data.table::fread(apath) %>% 
+  data.table::setnames(old = c("V1","V2","V3","V4","V5","V6","V7"), new = c("Time","Price","G127","Corr","Cond","Ex","Size")) %>% 
+  .[, `:=`(Time_alt = hms::as_hms(Time), Size = Size/10)] %>% 
+  .[Time_alt > hms::as_hms("09:35:00") & Time_alt < hms::as_hms("09:38:00"), ]
+```
+
+```{r}
+#| fig-width: 15 
+#| fig-cap: IBM Transaction Prices and Volume (x10), 09:35:00 - 09:38:00
+
+price_plot <- RplotterPkg::create_stick_plot(
+  df = ibm_trade_dt,
+  base_val = 131.4,
+  aes_x = "Time_alt",
+  aes_y = "Price",
+  y_title = "Stock Price",
+  y_limits = c(131.4, 132),
+  y_major_breaks = seq(131.4,132,0.2),
+  show_minor_grids = FALSE,
+  hide_x_tics = TRUE
+)
+volume_plot <- RplotterPkg::create_stick_plot(
+  df = ibm_trade_dt,
+  aes_x = "Time_alt",
+  aes_y = "Size",
+  x_title = "Time",
+  y_title = "Stock Volume",
+  x_date_labels = "%H-%M-%S"
+)
+
+layout <- list(
+  plots = list(price_plot, volume_plot),
+  rows = c(1,2),
+  cols = c(1,1)
+)
+
+stock_plot <- RplotterPkg::multi_panel_grid(
+  layout = layout,
+  col_widths = 32,
+  row_heights = c(6,7)
+)
+```

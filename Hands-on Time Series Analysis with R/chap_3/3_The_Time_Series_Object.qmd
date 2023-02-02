@@ -1,0 +1,499 @@
+---
+title: "Hands-on Time Series Analysis with R"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 2
+    self-contained: true
+    smooth-scroll: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    code-fold: true
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes/scripts/plots are inspired by chapter 3 'The Time Series Object' of the book [Hands-on Time Series Analysis with R](https://github.com/PacktPublishing/Hands-On-Time-Series-Analysis-with-R) by Rami Krispin"
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(data.table)
+library(astsa)
+library(magrittr)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+#  The Time Series Object
+
+## The Natural Gas Consumption dataset
+
+> The dataset represents the monthly consumption of natural gas in the US between 2000 and 2018.
+
+:::topic
+Load and plot the natural gas `ts` time series.
+:::
+
+```{r}
+apath <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "USgas.rda")
+load(apath)
+str(USgas)
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: US monthly natural gas consumption
+
+USgas_dt <- RtsaPkg::tsObj_to_dt(USgas) %>% 
+  data.table::setnames(old = c("time","value"), c("Date","Gas_Consumption"))
+
+RplotterPkg::create_scatter_plot(
+  df = USgas_dt,
+  aes_x = "Date",
+  aes_y = "Gas_Consumption",
+  x_major_date_breaks = "1 year",
+  x_date_labels = "%Y",
+  connect = TRUE,
+  x_title = "Year",
+  y_title = "Billion of Cubic Feet",
+  rot_y_tic_label = TRUE
+)
+```
+
+
+## The attributes of the *ts* class. 
+
+>A "ts" object is composed of two elements--the series values and its corresponding timestamp.  It has several attributes such as the series, cycle, frequency, and the time interval between each consecutive observation.
+
+The class and structure of *USgas* time series.
+```{r}
+base::cat("USgas class: ", class(USgas), "\n")
+base::cat("USgas 'is.ts':", is.ts(USgas), "\n")
+base::cat("USgas length:", length(USgas), "\n")
+str(USgas)
+```
+
+The `USgas` time series is a monthly ts time series that starts in Janurary 2000 and ends October 2019. We are covering 19 years with a total of 238 months.
+
+The `stats::cycle()` and `stats::time()` functions for *USgas*.
+```{r}
+base::cat("'head(cycle(USgas), 13)':", head(cycle(USgas), 13), "\n")
+base::cat("'head(time(USgas), 13))':", head(time(USgas), 13), "\n")
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Time series information of USgas
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(USgas)$stats,
+  container_width_px = 400
+)
+```
+
+:::topic
+Show the attributes of the US GDP quarterly dataset.
+:::
+
+The `astsa::gdp` ts time series is a seasonally adjusted quarterly U.S. GDP from 1947(1) to 2018(3).
+
+The class and structure of *gdp_ts*.
+```{r}
+gdp_ts <- astsa::gdp
+base::cat("gdp_ts class: ", class(gdp_ts), "\n")
+base::cat("gdp_ts 'is.ts':", is.ts(gdp_ts), "\n")
+base::cat("gdp_ts length:", length(gdp_ts), "\n")
+base::cat("'str(gdp_ts)':",str(gdp_ts),"\n")
+base::cat("'head(gdp_ts,4)':", head(gdp_ts,4), "\n")
+```
+
+The `stats::cycle()` and `stats::time()` functions for *gdp_ts*.
+```{r}
+base::cat("'head(cycle(gdp_ts), 8)':", head(cycle(gdp_ts), 8), "\n")
+base::cat("'head(time(gdp_ts), 8))':", head(time(gdp_ts), 8), "\n")
+```
+
+> As you can see, the timestamp is a decimal number that is aligned with the cycles of the series. The values on the left-hand side of the decimal point represent the cycle number(in this case, the calendar year), and the values on the right-side represent the cycle units, where the count of the units starts from 0.
+
+The `stats::frequency()` and `stats::deltat()` functions for *gdp_ts*.
+```{r}
+base::cat("'frequency(gdp_ts)':", frequency(gdp_ts), "\n")
+base::cat("'delta(gdp_ts)':", deltat(gdp_ts), "\n")
+```
+
+The `stats::start()` and `stats::end()` functions for *gdp_ts*.
+```{r}
+base::cat("'start(gdp_ts)':", start(gdp_ts), "\n")
+base::cat("'end(gdp_ts)':", end(gdp_ts))
+```
+
+Show sample data on the GDP quarterly time series dataset.
+```{r}
+#| code-fold: true
+#| tbl-cap: The quarterly *gdp_ts* time series.
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(gdp_ts, n_obser = 8)$data,
+  container_width_px = 400
+)
+```
+
+Plot the *gdp_ts* time series.
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: US quarterly GDP
+
+gdp_dt <- RtsaPkg::tsObj_to_dt(gdp_ts) %>% 
+  data.table::setnames(old=c("time","value"), new = c("Date","US_GDP"))
+RplotterPkg::create_scatter_plot(
+  df = gdp_dt,
+  aes_x = "Date",
+  aes_y = "US_GDP",
+  x_major_date_breaks = "4 year",
+  x_date_labels = "%Y",
+  connect = TRUE,
+  show_pts = FALSE,
+  x_title = "Year",
+  y_title = "US GDP",
+  rot_y_tic_label = TRUE
+)
+```
+
+### Multivariate time series objects
+
+>The multiple time series object (class: "mts") is a combination of "ts" and "matrix" classes.
+
+An example of a "mts" object is the `astsa::econ5` dataset - multiple time series of quarterly U.S. unemployment, GNP, consumption, and government and private investment, from 1948-III to 1988-II.
+
+```{r}
+econ_mts <- astsa::econ5
+base::cat("econ_mts class: ", class(econ_mts), "\n")
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Multiple Time series sample data for *econ_mts*
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(econ_mts, n_obser = 8)$data,
+  container_width_px = 600
+)
+```
+
+> "mts" inherits from the "matrix" class and contains a matrix like table
+
+```{r}
+base::cat("econ_mts frequency: ", stats::frequency(econ_mts), "\n")
+base::cat("econ_mts delta: ", stats::deltat(econ_mts), "\n")
+base::cat("econ_mts time: ", head(stats::time(econ_mts)), "\n")
+base::cat("econ_mts cycles: ", head(stats::cycle(econ_mts)), "\n")
+base::cat("econ_mts start: ", stats::start(econ_mts), "\n")
+base::cat("econ_mts end: ", stats::end(econ_mts))
+```
+
+Prerequisities for merging two "ts" into "mts":
+    1. Inputs are regular time series
+    2. Inputs have exactly same frequency or time interval between observations
+    3. Inputs start at same cycle number and cycle unit
+
+### Creating a "ts" object
+
+The `stats::ts()` function allows creating a "ts" object. 
+
+:::topic
+Create a monthly series with values from 1 to 60 beginning on January 2010.
+:::
+
+* Attributes include:
+    + Frequency = 12
+    + Cycle = a year with frequency units of months
+    + Start = frequency unit 1 (January) with cycle unit 2010
+    + End = frequency unit 12 (December) with cycle unit 2014
+    
+```{r}
+my_ts_1 <- stats::ts(
+  data = 1:60, # series values
+  start = c(2010,1), # time of the first observation
+  end = c(2014,12), # time of the last observation
+  frequency = 12 # the series frequency
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: ts object created via attributes
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(my_ts_1)$data,
+  container_width_px = 400
+)
+```
+
+:::topic
+Convert a "data.frame" object (`US_indicators`) to a `ts`" time series object.
+:::
+
+```{r}
+apath <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "US_indicators.rda")
+base::load(apath)
+str(US_indicators)
+```
+We will use the *US_indicators$Vehicle Sales* vector as the data for the new `ts` time series object .
+
+Since the input series is monthly we need to define the cycle(year) and frequency(month) units of the first observation:
+
+ `start = c(1976, 1)`  
+ 
+ We can define a `ts` object by defining the data, the start point and the frequency:
+
+```{r}
+sales_ts <- ts(
+  data = US_indicators$`Vehicle Sales`,
+  start = c(1976, 1),
+  frequency = 12
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: US_indicators$Vehicle_Sales converted to "ts" object
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(sales_ts)$data, 
+  container_width_px = 400
+)
+```
+
+>Main limitations of "ts" is that it does not support multiple cycles such as a daily time series which can have both weekdays and yearly cycles.
+Also cannot retrieve original time stamp if is made up more than two elements.  In `total_vec_sales_ts` the day component is lost.
+
+### Creating a *mts* object
+
+:::topic
+Join both vehicle sales and unemployment rate series' from *US_indicators* into an "mts" object. 
+:::
+
+Set the *data*, *start*, and *frequency* as we did above
+```{r}
+US_indicators_mts <- ts(
+  data = US_indicators[, c("Vehicle Sales", "Unemployment Rate")],
+  start = c(1976, 1),
+  frequency = 12
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Vehicle_Sales and Unemployment Rate as data for a converted multiple "mts" time series object
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(US_indicators_mts)$data, 
+  container_width_px = 400
+)
+```
+
+
+### Setting the series frequency
+
+* Calculation of series freqency can be divided into two groups:
+    + a daily frequency derived from the number of days in calendar year (weeks, hours, minutes in year)
+    + any other frequency not derived from number of days
+
+Create a data.frame with daily time over 10 years:
+```{r}
+daily_dt <- data.table::data.table(
+  date = seq.Date(as.Date("2010-01-01"), length.out = 365 * 10, by = "day"),
+  y = rnorm(365 * 10, mean = 15, sd = 2)
+)
+str(daily_dt)
+```
+We want to create "ts" object with a weekly cycle which suggests a frequency of the series to be set to 7:
+
+```{r}
+days_week_ts <- ts(
+  data = daily_dt$y,
+  start = c(1, lubridate::wday(min(daily_dt$date))),
+  frequency = 7
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Setting the frequency to 7 for a weekly cycle of daily random data.
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = days_week_ts)$data,
+  container_width_px = 400
+)
+```
+
+
+We used `lubridate::wday()` to extract the day of the week from the first date of the series which appears to be cycle 6 or Saturday.
+
+For a yearly cycle of the daily we would set the frequency to 365 (ignoring leap year):
+```{r}
+days_year_ts <- ts(
+  data = daily_dt$y,
+  start = c(2010, lubridate::yday(min(daily_dt$date))),
+  frequency = 365
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Setting the frequency to 365 for a daily cycle of daily random data.
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(days_year_ts, n_obser = 6)$data,
+  container_width_px = 400
+)
+```
+
+
+Setting the frequency to 365.25 to smooth the effect of leap year:
+```{r}
+days_year_leap_ts <- ts(
+  data = daily_dt$y,
+  start = c(2010, lubridate::yday(min(daily_dt$date))),
+  frequency = 365.25
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Setting the frequency to 365.25 for a daily cycle accounting for leap year.
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(days_year_leap_ts, n_obser = 6)$data,
+  container_width_px = 400
+)
+```
+
+```{r}
+#| code-fold: true
+#| tbl-cap: Statistics from setting the frequency to 365.25 for a daily cycle accounting for leap year.
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(days_year_leap_ts, n_obser = 6)$stats,
+  container_width_px = 500
+)
+```
+
+## Data manipulation of ts objects
+
+### The window function
+
+The `stats::window()` function subsets a "ts" object based on a time range.
+
+:::topic
+Use the function to extract the observations of the year 2005 from the USgas series.
+:::
+
+Reread "USgas.rda" and show information for the original series.
+```{r}
+#|code-fold: true
+#|tbl-cap: USgas time series statistics
+
+apath <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "USgas.rda")
+load(apath)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = USgas)$data,
+  container_width_px = 400
+)
+```
+
+Get the series data for the year 2005
+
+```{r}
+window_2005_ts <- stats::window(
+  x = USgas,
+  start = c(2005,1),
+  end = c(2005,12)
+)
+```
+
+```{r}
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = window_2005_ts)$stats,
+  container_width_px = 450
+)
+```
+
+
+Can get a specific frequency unit from the series. Extract all the observations of the series that occurred in October of the year:
+```{r}
+window_october_ts <- stats::window(
+  x = USgas,
+  start = c(2000, 10),
+  frequency = 1
+)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = window_october_ts)$data,
+  container_width_px = 400
+)
+
+```
+Note: a frequency = 1 sets the output to a yearly series
+
+### Aggregating ts objects
+The `stats::aggregate()` function is a generic function for aggregating "ts" and "data.frame" objects.
+
+:::topic
+Use the aggregate "sum" to transform the NGC series from a quarterly to yearly.
+:::
+
+```{r}
+USgas_year_ts <- stats::aggregate(USgas, nfrequency = 1, FUN = "sum")
+USgas_year_ts
+```
+
+### Creating lags and leads for ts objects
+The `stats::lag()` and `stats::lead()`can be used to create lags and leads.
+
+:::topic
+Create a seasonal lag of USgas:
+:::
+```{r}
+USgas_lag4_ts <- stats::lag(USgas, k = -4)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = USgas_lag4_ts)$stats,
+  container_width_px = 450
+)
+```
+
+```{r}
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = USgas)$stats,
+  container_width_px = 400
+)
+```
+
+
+The fifth month of 2000 is the lag start; the second month in 2020 is the lag end.
+
+## Visualizing ts and mts objects
+
+
+
+
+
+
+
+
+
+

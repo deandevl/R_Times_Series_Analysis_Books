@@ -1,0 +1,127 @@
+---
+title: "Detect Changes in Timeseries Data"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 0
+    self-contained: true
+    smooth-scroll: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "With some random data with three distinct group means in the timeseries, we will compare R package methods
+`changepoint::cpt.mean()` and `bcp::bcp()` for locating the groups. The following R scripts and graphs were inspired from the article [Detect Changes in Timeseries Data](https://www.r-bloggers.com/2021/03/detect-the-changes-in-timeseries-data/?utm_source=feedburner&utm_medium=email&utm_campaign=Feed%3A+RBloggers+%28R+bloggers%29)"
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(data.table)
+library(ggplot2)
+library(RplotterPkg)
+library(changepoint)
+library(bcp)
+```
+
+# Detect Changes in Timeseries Data
+
+## Setup and plot random data
+
+```{r}
+set.seed(5)
+sleep_v <- rnorm(100, 60, 5)
+awake_v <- rnorm(200, 75, 8)
+exercise_v <- rnorm(50, 135, 12)
+my_heart_rate <- c(sleep_v, awake_v, exercise_v)
+
+data_dt <- data.table(
+    time = 1:length(my_heart_rate),
+    heart_rate = my_heart_rate
+)
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Heartrate Data, Three distinct periods
+
+RplotterPkg::create_scatter_plot(
+  df = data_dt,
+  aes_x = "time",
+  aes_y = "heart_rate",
+  connect = T,
+  line_width = 0.6,
+  line_color = "blue",
+  axis_text_size = 13,
+  show_pts = F
+)
+```
+
+## Detect changes with `changepoint::cpt.mean()`
+
+```{r}
+#| warning: false
+
+change_points <- changepoint::cpt.mean(data = my_heart_rate, penalty = "None", method = "SegNeigh", Q = 3)
+pts_dt <- data.table(
+  x = c(0, 101, 300, 350),
+  y = c(60.15, 75.14, 132.7, 132.7)
+)
+```
+Plot the means for the groups identified.
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Heartrate Data, Three distinct periods detected with changepoint::changepoint()
+
+RplotterPkg::create_scatter_plot(
+  df = data_dt,
+  aes_x = "time",
+  aes_y = "heart_rate",
+  line_width = 2.0,
+  line_color = "blue",
+  axis_text_size = 13
+) + geom_segment(x = pts_dt$x[[1]], y = pts_dt$y[[1]], xend = pts_dt$x[[2]], yend = pts_dt$y[[1]], color = "red") +
+    geom_segment(x = pts_dt$x[[2]], y = pts_dt$y[[2]], xend = pts_dt$x[[3]], yend = pts_dt$y[[2]], color = "red") +
+    geom_segment(x = pts_dt$x[[3]], y = pts_dt$y[[3]], xend = pts_dt$x[[4]], yend = pts_dt$y[[3]], color = "red")
+```
+
+## Detect changes with `bcp::bcp()`
+
+```{r}
+bcp_lst <- bcp::bcp(y = my_heart_rate)
+bcp_pts_dt <- data.table(
+  time = 1:length(bcp_lst$posterior.mean),
+  heart_rate = as.numeric(bcp_lst$posterior.mean)
+)
+```
+
+Plot the means for the groups identified:
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Heartrate Data, Three distinct periods detected with bcp::bcp()
+#| 
+RplotterPkg::create_scatter_plot(
+  df = data_dt,
+  aes_x = "time",
+  aes_y = "heart_rate",
+  line_width = 0.6,
+  line_color = "blue",
+  axis_text_size = 13
+) + geom_line(data = bcp_pts_dt, color = "red")
+```

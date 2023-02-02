@@ -1,0 +1,220 @@
+---
+title: "Analyzing Time Series Data"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 0
+    self-contained: true
+    smooth-scroll: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following R script was inspired from the article [Analyzing Time Series Data](https://observablehq.com/@observablehq/analyzing-time-series-data?utm_campaign=Data_Elixir&utm_source=Data_Elixir_356)"
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(data.table)
+library(lubridate)
+library(RplotterPkg)
+library(ggplot2)
+library(here)
+```
+
+# Analyzing Time Series Data
+
+## Read the data
+
+Read in the electrical demand/day-ahead forecast for Texas from Jan 2021 to Feb 2021:
+```{r}
+demand_path <- file.path(here::here(), "Analyzing Time Series Data", "data", "TEX-Demand-Jan-Feb.csv")
+forecast_path <- file.path(here::here(), "Analyzing Time Series Data", "data", "TEX-Day-ahead-forecast-Jan-Feb.csv")
+demand_dt <- data.table::fread(demand_path)[,c("date","value")]
+forecast_dt <- data.table::fread(forecast_path)[,c("date","value")]
+
+demand_dt[, source := "demand"]
+forecast_dt[, source := "forecast"]
+```
+
+## Wrangle the data
+
+Combine the rows of both `demand_dt` and `forecast_dt`.
+```{r}
+demand_forecast_dt <- rbind(demand_dt, forecast_dt)
+```
+
+Convert `source` column to factor; convert `date` column to POSIXct.
+```{r}
+demand_forecast_dt[, source := as.factor(source)]
+#demand_forecast_dt[, date := strptime(date,format = "%Y-%m-%dT%H:%MZ")]
+
+demand_forecast_dt[, date := lubridate::parse_date_time(date, orders = c("Ymd", "Ymd HM"))]
+```
+
+## Plot both demand and forecast
+
+Create an overlap plot of the electrical demand and forecast.
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Total Electricity Generated in Texas, (thousand megawatts)
+
+RplotterPkg::create_scatter_plot(
+  df = demand_forecast_dt,
+  aes_x = "date",
+  aes_y = "value",
+  aes_alpha = "source",
+  connect = TRUE,
+  show_pts = FALSE,
+  x_major_date_breaks = "1 week",
+  x_date_labels = "%b-%d",
+  y_limits = c(0, 80000),
+  y_major_breaks = seq(0, 80000, 10000),
+  rot_y_tic_label = TRUE,
+  line_width = 0.4,
+  line_color = "blue"
+) + 
+  ggplot2::scale_alpha_manual(
+    values = c(1.0, 0.2)
+  ) + 
+  geom_vline(xintercept = as.POSIXct("2021-02-14 22:00:00"), color = "red", linewidth = 0.5) +
+  annotate("text", x = as.POSIXct("2021-02-21 09:00:00"), y = 10000, label = "Rolling Blackouts", size = 3, alpha = .5, color = "red")
+```
+
+## Show the differences 
+Convert `demand_forcast_dt` to wide shape:
+```{r}
+demand_forecast_wide_dt <- data.table::dcast(demand_forecast_dt, date ~ source, value.var = "value")
+```
+Create columns showing differences
+```{r}
+demand_forecast_wide_dt[,diff := demand - forecast]
+demand_forecast_wide_dt[,Demand_direction := ifelse(demand > forecast, "Positive", "Negative")]
+```
+
+Plot the area differences.
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Total Electricity Generated in Texas, (thousand megawatts)
+
+RplotterPkg::create_scatter_plot(
+  df = demand_forecast_wide_dt,
+  aes_x = "date",
+  aes_y = "demand",
+  connect = TRUE,
+  line_width = 0.4,
+  show_pts = FALSE,
+  x_major_date_breaks = "1 week",
+  x_date_labels = "%b-%d",
+  y_limits = c(0, 80000),
+  y_major_breaks = seq(0, 80000, 10000),
+  rot_y_tic_label = TRUE
+) +
+  #geom_line(aes(y = forecast), alpha = 0.2, color = "blue", linewidth = 0.4) +
+  geom_ribbon(aes(ymin = demand, ymax = forecast, fill = Demand_direction), alpha = 0.8) +
+  scale_fill_manual(values = c("purple","orange"), name = "Demand Direction") +
+  geom_vline(xintercept = as.POSIXct("2021-02-14 22:00:00"), color = "red", linewidth = 0.5) +
+  annotate("text", x = as.POSIXct("2021-02-21 09:00:00"), y = 10000, label = "Rolling Blackouts", size = 3, alpha = .5, color = "red")
+```
+
+Plot the numeric differences.
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Total Electricity Generated in Texas, (thousand megawatts)
+
+RplotterPkg::create_stick_plot(
+  df = demand_forecast_wide_dt,
+  aes_x = "date",
+  aes_y = "diff",
+  aes_color = "Demand_direction",
+  x_major_date_breaks = "1 week",
+  x_date_labels = "%b-%d",
+  y_limits = c(-30000, 15000),
+  y_major_breaks = seq(-30000, 15000, 5000),
+  rot_y_tic_label = TRUE
+) + 
+  scale_color_manual(values = c("purple","orange"), name = "Demand Direction") +
+  geom_vline(xintercept = as.POSIXct("2021-02-14 22:00:00"), color = "red", linewidth = 0.5) +
+  annotate("text", x = as.POSIXct("2021-02-21 09:00:00"), y = 10000, label = "Rolling Blackouts", size = 3, alpha = .5, color = "red")
+```
+
+## Did you notice?
+
+The demand actually started to fall below the forecast just prior to the blackouts.  Also there are two dips during the 36 hours before the blackouts initiated.
+
+Subset the original data set.
+```{r}
+start_date <- as.POSIXct("2021-02-07 01:00:00")
+stop_date <- as.POSIXct("2021-02-17 01:00:00")
+demand_forecast_zoom_dt <- demand_forecast_wide_dt[date > start_date & date < stop_date ]
+```
+
+Plot the zoomed data.
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Total Electricity Generated in Texas, (thousand megawatts)
+
+RplotterPkg::create_stick_plot(
+  df = demand_forecast_zoom_dt,
+  aes_x = "date",
+  aes_y = "diff",
+  aes_color = "Demand_direction",
+  line_width = 1.45,
+  x_major_date_breaks = "1 day",
+  x_date_labels = "%b-%d",
+  y_limits = c(-30000, 15000),
+  y_major_breaks = seq(-30000, 15000, 5000),
+  rot_y_tic_label = TRUE
+) + 
+  scale_color_manual(values = c("purple","orange"), name = "Demand Direction") +
+  geom_vline(xintercept = as.POSIXct("2021-02-14 22:00:00"), color = "red", linewidth = 0.5) +
+  annotate("text", x = as.POSIXct("2021-02-15 22:00:00"), y = 10000, label = "Rolling Blackouts", size = 3, alpha = .5, color = "red")
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-cap: Total Electricity Generated in Texas, (thousand megawatts)
+
+demand_forecast_zoom_dt <- demand_forecast_dt[date > start_date & date < stop_date ]
+RplotterPkg::create_scatter_plot(
+  df = demand_forecast_zoom_dt,
+  aes_x = "date",
+  aes_y = "value",
+  aes_alpha = "source",
+  connect = TRUE,
+  show_pts = FALSE,
+  x_major_date_breaks = "1 day",
+  x_date_labels = "%b-%d",
+  y_limits = c(0, 80000),
+  y_major_breaks = seq(0, 80000, 10000),
+  rot_y_tic_label = TRUE,
+  line_width = 0.4,
+  line_color = "blue"
+) + 
+  ggplot2::scale_alpha_manual(
+    values = c(1.0, 0.2)
+  ) + 
+  geom_vline(xintercept = as.POSIXct("2021-02-14 22:00:00"), color = "red", linewidth = 0.5) +
+  annotate("text", x = as.POSIXct("2021-02-14 00:00:00"), y = 10000, label = "Rolling Blackouts", size = 3, alpha = .5, color = "red")
+```
+

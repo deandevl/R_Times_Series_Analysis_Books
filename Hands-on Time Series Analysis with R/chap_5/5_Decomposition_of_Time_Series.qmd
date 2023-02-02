@@ -1,0 +1,172 @@
+---
+title: "Hands-on Time Series Analysis with R"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 4
+    self-contained: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes/scripts/plots are inspired by chapter 5 'Decomposition of Time Series' of the book [Hands-on Time Series Analysis with R](https://github.com/PacktPublishing/Hands-On-Time-Series-Analysis-with-R) by Rami Krispin"
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(data.table)
+library(here)
+library(magrittr)
+library(xts)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+# Decomposition of time series data
+
+## The moving average function
+Components of a moving average:
+
+1. rolling window -- generic function that slides across the series to extract sequential subsets.
+
+2. average function -- a simple or weighted average, which is applied on each subset of the rolling window.
+
+### The rolling window structure
+The window structures include:
+
+1. one-sided window -- groups each observation of the series with its past $n-1$ observations. The first $n-1$ observations cannot be smoothed.
+
+2. two-sised window -- groups each observation of the series with past $n_{1}$ and future $n_{2}$ observations where $n$ = $n_{1}$ + $n_{2}$ + 1. If $n$ is odd then $n_{1}$ equals  $n_{2}$.  The $n-1/2$ observations on either end of the series cannot be smoothed. 
+
+### The average method
+
+Two types of averaging methods:
+
+1. The simple mean where.
+
+$$\bar{Y} = \frac{\sum^n_{i=1}Y_{i}}{n}$$
+2. The weighted average.
+
+$$\bar{Y} = \frac{\sum^n_{i=1}w_{i}Y_{i}}{n}$$
+
+> A weighted average should be used with time series data when there is systematic relationship between some observations/variables in the series based on their timestamp distance (i.g. correlation analysis).
+
+### The MA attributes
+
+The length of the MA window $n$ is known as the "order".
+
+The cost of MA window are the observations that cannot be averaged because of the definition of the window. For one-sided windows the cost is the first $n-1$ observations; for two-sided, the $n-1/2$ observations on either end of the series.
+
+Main applications of MA are:
+
+1. Noise reduction -- reduces the series variation, smoothing the random noise
+
+2. De-seasonalize -- remove the seasonal component
+
+3. Forecasting -- forecast the future of the series by averaging the past observations
+
+The term "MA" refers to the smoothing function; the term "MA model" or "MA process" refers to the regression analysis of the error term in forecasting.
+
+
+We will use the "ts" time series USVSales to demonstrate the applications of each method.
+
+:::topic
+Show the time series stats of USVSales and plot.
+:::
+
+```{r}
+apath <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "USVSales.rda")
+load(apath)
+str(USVSales)
+```
+```{r}
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = USVSales)$stats,
+  container_width_px = 400
+)
+```
+```{r}
+#| fig-cap: US Monthly Total Vehicle Sales
+#| fig-width: 10
+
+USVSales_dt <- RtsaPkg::tsObj_to_dt(USVSales) %>% 
+  data.table::setnames(old = c("time", "value"), new = c("Date", "USVSales"))
+RplotterPkg::create_scatter_plot(
+  df = USVSales_dt,
+  aes_x = "Date",
+  aes_y = "USVSales",
+  x_title = "Years",
+  y_title = "Thousands of Units",
+  rot_y_tic_label = T,
+  connect = T,
+  x_limits = c(as.Date("1975-01-01"), as.Date("2020-01-01")),
+  x_major_breaks = seq.Date(from = as.Date("1975-1-1"), to = as.Date("2020-1-1"), by = "5 year"),
+  x_date_labels = "%Y",
+  y_major_breaks = seq(from = 600, to = 2000, by = 200)
+)
+```
+
+### The simple moving average
+
+:::topic
+Compute the simple moving average of USVSales using window order equal to 4.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-cap: Simple moving average of US vehicle sales, order = 4
+
+RtsaPkg::graph_ma(
+  df = USVSales_dt,
+  time_col = "Date",
+  value_col = "USVSales",
+  overlap = FALSE,
+  show_pts = FALSE,
+  y_limits = c(600, 2000),
+  ma_caption = "Simple moving average with window order = 4",
+  ob_caption = "US vehicle sales (1976 - 2019)",
+  row_height = 6
+)
+```
+
+:::topic
+Compute the simple moving average of USVSales using window order equal to 12.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-cap: Simple moving average of US vehicle sales, order = 12
+
+RtsaPkg::graph_ma(
+  df = USVSales_dt,
+  time_col = "Date",
+  value_col = "USVSales",
+  window_n = 12,
+  overlap = FALSE,
+  show_pts = FALSE,
+  y_limits = c(600, 2000),
+  ma_caption = "Simple moving average with window order = 12",
+  ob_caption = "US vehicle sales (1976 - 2019)",
+  row_height = 6
+)
+```
+
+
+### Two-sided MA
+

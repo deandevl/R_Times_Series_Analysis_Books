@@ -1,0 +1,298 @@
+---
+title: "Lesson 3: ID, Estimate, Forecast ARIMA Models"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 2
+    self-contained: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 12
+    fig-height: 6
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes, scripts, and plots are following the [Lesson 3: ID, Estimate, Forecast ARIMA Models](https://online.stat.psu.edu/stat510/lesson/3) from [PennState STAT 510: Applied Time Series Analysis](https://online.stat.psu.edu/statprogram/stat510)."   
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(here)
+library(ggplot2)
+library(data.table)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+# Identifying and estimating ARIMA models; Using ARIMA models to forecast
+
+## Non-seasonal ARIMA models
+
+ARIMA models, also called Box-Jenkins models are models that may possibly include autoregressive terms, moving average terms, and differencing operations.
+
+When only autoregressive terms -- AR model
+When only moving average terms -- MA model
+When no differencing is involved -- ARMA model
+
+### Specifying elements of the model
+
+Models are specified as (AR order, differencing, MA order)
+
+Example: A model with one AR term, a first difference, and one MA term would have order (1,1,1)
+With a first difference, the AR and MA terms are being applied to the variable $Z_t = X_t - X_{t-1}$.
+A second order difference: $z_t = (x_t - x_{t-1}) - (x_{t-1} - x_{t-2})$
+
+### Identifying a possible model
+For the first guess use: a time series plot, the ACF, and the PACF.
+
+:::topic
+Times series plot of the observed series.
+:::
+
+Looking for possible trend, seasonality, outliers, constant/nonconstant variance.
+
+Nonconstant variance in a series with no trend may have to be addressed with something like an ARCH model which includes a model for changing variation over time.
+
+If there's an upward or downward trend, a first difference may be needed.
+
+For data with a curved upward trend accompanied by increasing variance, you should consider transforming the series with either a logarithm or a square root.
+
+:::topic
+ACF and PACF
+:::
+
+* Should be considered together.
+
+    + AR models have theoretical PACFs with non-zero values at the AR terms in the model and zero values elsewhere.
+    + AR(2) has a sinusoidal ACF that converges to zero.
+    + MA models have theoretical ACFs with non-zero values at the MA terms in the model and zero values elsewhere.
+    + ARMA models have ACFs and PACFs that both tail off to zero. Deciding the order for each term is tricky.  You'll have to guess that one or two terms of each type may be needed.
+    + If the ACF and PACF do not tail off, but instead have values that stay close to 1 over many lags, the series is non-stationary and differencing will be needed.
+    + If all autocorrelations are non-significant then the series is random. The data are independent and identically distributed. You're done at that point.
+    + If you've taken first differences and all the autocorrelations are non-significant then the series is called a random walk and you are done. A possible model for a random walk is $x_t = \delta + x_{t-1} + w_t$. The data are dependent and are not identically distributed, in fact both the mean and variance are increasing through time.
+ 
+You might also consider examining plots of $x_t$ versus various lags of $x_t$.
+
+:::topic
+Estimating and diagnosing a possible model.
+:::
+
+* After you have made a guess and the model has been estimated, do the following:
+    + Look at the significance of the coefficients. In R, sarima provides p-values and so you may simply compare the p-value to the standard 0.05 cut-off.
+    + Look at the ACF of the residuals. For a good model all autocorrelations for the residual series should be non-significant.   If not you need to try a different model.
+    + Look at the Box-Pierce tests for possible residual autocorrelation at various lags.
+    + If non-constant variance is a concern look at a plot of residuals versus fits and/or a time series plot of the residuals.
+
+:::topic
+What if more than one model looks okay?
+:::
+
+* Sometimes more than one model can seem to work for the same dataset. When that's the case, some things you can do to decide between the models are:
+    + Possibly choose the model with the fewest parameters
+    + Examine the standard errors of forecase values. Pick the model with the lowest standard errors for predictions of the      future.
+    + Compare models with regard to statistics such as the MSE (the est of the variance of the $w_t$), AIC, AICc, and SIC (also called BIC). Lower values of these statistics are desirable.
+
+:::topic
+Example 3-1: Lake Erie data set.
+:::
+
+Read the data; convert to a data.frame; rename variable:
+```{r}
+apath <- file.path(here::here(), "PennState Course", "data", "eriedata.dat")
+erie_vec <- base::scan(apath)
+erie_dt <- data.table(
+  datetime = seq(from = as.POSIXct("1980-10-01 12:10:10"), by = "12 hours", length.out = 40),
+  data = erie_vec
+)
+str(erie_dt)
+```
+
+```{r}
+#| fig-cap: Lake Erie levels over consecutive measurements in October
+
+RplotterPkg::create_scatter_plot(
+  df = erie_dt,
+  aes_x = "datetime",
+  aes_y = "data",
+  x_title = "Time (day:hour)",
+  rot_y_tic_label = TRUE,
+  x_major_date_breaks = "24 hour",
+  x_date_labels = "%e:%H",
+  y_limits = c(10,18),
+  y_major_breaks = seq(10,18,1),
+  connect = TRUE
+)
+```
+
+The plot shows a big dip at index 14 (day:hour -- 1980-10-08 00:10:10, value -- 10.87). Does not appear that there is any trend.
+
+:::topic
+Plot the ACF/PACF of the Erie levels.
+:::
+
+```{r}
+#| fig-cap: Lake Erie Levels, Autocorrelation - PartialAutocorrelation
+#| fig-width: 10
+#| fig-height: 6
+
+RtsaPkg::graph_acf(
+  df = erie_dt,
+  time_col = "datetime",
+  value_col = "data",
+  max_lag = 30,
+  confid_level = 1.96,
+  show_obs = FALSE,
+  show_minor_grids = FALSE,
+  bold_y = 0.0,
+  col_width = 12
+)
+```
+
+The PACF shows a single spike at the first lag and the ACF shows a tapering pattern. An AR(1) model is indicated.
+
+:::topic
+Estimating the model.
+:::
+
+Start with an AR(1) model specified with order (p,d,q) = (1,0,0). Use `stats::arima()` to estimate.
+
+Create a "xts" time series object from the *erie_dt* data.table:
+```{r}
+erie_xts <- RtsaPkg::df_to_xts(erie_dt, time_col = "datetime", data_cols = "data")
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(erie_xts)$stats,
+  container_width_px = 400
+)
+```
+
+Run `stats::arima()`.
+```{r}
+erie_arima <- stats::arima(x=erie_xts, order = c(1,0,0))
+erie_arima
+```
+
+Notice the heading "intercept".  This is giving the estimated mean of the series based on this model ($\mu$), not the intercept. The model used in the software is of the form:
+
+
+$$(x_t - \mu) = \phi_1(x_{t-1} - \mu) + w_t$$
+With $\mu \approx 14.6309$ and $\phi_1 = 0.6909$ the estimated model may be written as:
+$$(x_t - 14.6309) = 0.6909(x_{t-1} - 14.6309) + w_t$$
+or:
+$$x_t = 4.522 + 0.6909x_{t-1} + w_t$$
+The AR coefficient is statistically significant: (z = 0.6909/0.1094 = 6.315).
+
+:::topic
+Compute the lag 1 and estimate $x_t$ using the above estimated AR(1) coefficient.
+:::
+
+Make a copy of *erie_dt* and add the column "lag1".
+```{r}
+erie_lag1_dt <- data.table::copy(erie_dt)
+erie_lag1_dt[, lag1 := shift(data, n = 1, type = "lag")]
+erie_lag1_dt <- na.omit(erie_lag1_dt)
+```
+
+Add the "fit" fit column.
+```{r}
+erie_lag1_dt[, fit := lag1*erie_arima$coef[1] + (erie_arima$coef[2] - (erie_arima$coef[1]*erie_arima$coef[2]))]
+```
+
+Add the "data_resid" residual column.
+```{r}
+erie_lag1_dt[, data_resid := data - fit]
+```
+
+Add the "arima_resid" column from the modeling.
+```{r}
+erie_lag1_dt[, arima_resid := erie_arima$residuals[2:40]]
+```
+
+Add the "resid_z" standardized residuals column.
+```{r}
+erie_lag1_dt[, resid_z := (data_resid - mean(data_resid))/sd(data_resid)]
+```
+
+Show the final data frame.
+```{r}
+str(erie_lag1_dt)
+```
+
+:::topic
+Plot the standardized residuals from the data frame.
+:::
+
+```{r}
+#| fig-cap: Standardized residuals from modeling Erie levels time series with AR(1) model
+
+RplotterPkg::create_scatter_plot(
+  df = erie_lag1_dt,
+  aes_x = "datetime",
+  aes_y = "resid_z",
+  y_limits = c(-2.0,2.0),
+  y_major_breaks = seq(-2.0,2.0,0.5),
+  rot_y_tic_label = TRUE,
+  connect = TRUE,
+  bold_y = 0.0
+)
+```
+
+:::topic
+Plot the ACF of the standardized residuals from the data frame.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: ACF of standardized residuals from AR(1) modeling Erie time series levels
+
+erie_acf_plot <- RtsaPkg::graph_acf(
+  df = erie_lag1_dt,
+  time_col = "datetime",
+  value_col = "resid_z",
+  max_lag = 16,
+  confid_level = 1.96,
+  show_obs = FALSE,
+  show_pc = FALSE,
+  bold_y = 0.0,
+  row_height = 6
+)
+```
+
+:::topic
+Plot the normal Q-Q plot of standardized residuals from the data frame.
+:::
+
+Compute the Quantile-Quantile values.
+```{r}
+q_q_xy <- stats::qqnorm(erie_lag1_dt$resid_z, plot.it = FALSE)
+```
+Plot the x-y qqnorm values.
+```{r}
+#| fig-cap: Normal Q-Q plot of standardized residuals from Erie levels AR(1) modeling
+
+RplotterPkg::create_scatter_plot(
+  df = as.data.frame(q_q_xy),
+  aes_x = "x",
+  aes_y = "y",
+  x_title = "Theoretical Quantiles",
+  y_title ="Sample Quantiles",
+  x_limits = c(-2,2),
+  x_major_breaks = seq(-2,2,0.5),
+  y_limits = c(-2,2),
+  y_major_breaks = seq(-2,2,0.5),
+  rot_y_tic_label = TRUE
+) + ggplot2::geom_abline(intercept = 0, slope = 1, color = "blue", linetype = "dashed", lwd = 1)
+```

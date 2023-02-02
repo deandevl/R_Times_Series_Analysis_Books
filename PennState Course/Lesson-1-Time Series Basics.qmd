@@ -1,0 +1,480 @@
+---
+title: "PennState STAT 510: Applied Time Series Analysis"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 0
+    self-contained: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 12
+    fig-height: 6
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes, scripts, and plots are following the [Lesson 1: Time Series Basics](https://online.stat.psu.edu/stat510/lesson/1) from [PennState STAT 510: Applied Time Series Analysis](https://online.stat.psu.edu/statprogram/stat510)."
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(here)
+library(magrittr)
+library(ggplot2)
+library(data.table)
+library(modelr)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+# Lesson 1: Time Series Basics
+
+## Overview of time series characteristics
+
+* There are two basic types of "time domain" models:
+    + Models that relate the present value of a series to past values -- ARIMA models (Autoregressive Integrated Moving Average).
+    + Ordinary regression models that use time indices a x-variables.
+
+Example 1-1 Earthquake time series example.
+
+:::topic
+Read and plot earthquake data.
+::: 
+
+Read and convert data to data.frame object.
+```{r}
+apath <- file.path(here::here(), "PennState Course", "data", "quakes.dat")
+quakes_vec <- base::scan(apath)
+quakes_dt <- data.table(
+  date = seq(from = as.Date("1920-01-01"), by = "year", length.out = 99),
+  data = quakes_vec
+)
+str(quakes_dt)
+```
+
+2. Plot data:
+```{r}
+#| fig-width: 12
+#| fig-height: 6
+#| fig-cap: Time Series Plot of Quake Counts over 99 consecutive years
+
+RplotterPkg::create_scatter_plot(
+  df = quakes_dt,
+  aes_x = "date",
+  aes_y = "data",
+  #x_limits = c(as.Date("0000-01-01"), as.Date("0100-01-01")),
+  #x_major_breaks = seq(as.Date("0000-01-01"), as.Date("0100-01-01"), "10 year"),
+  x_date_labels = "%Y",
+  rot_y_tic_label = TRUE,
+  x_title = "Year",
+  y_title = "Quakes Count",
+  connect = TRUE,
+  pts_fill = "red",
+  pts_color = "blue"
+)
+```
+
+* Some features of the plot:
+    + no consistent trend
+    + no seasonality
+    + no obvious outliers
+    + unsure if variance is constant or not
+
+### Autoregressive model of order 1 
+
+One of the simplest ARIMA type models is to use a linear model to predict the present value using the value from one previous time or order of 1 called AR(1). The order k indicates the number of previous times ($x_{t-1}, x_{t-2},...x_{t-k}$ to use in the model to estimate the current time $x_t$.
+
+:::topic
+Calculate and plot the $x_t$ (i.e. "*quakes*") versus $x_{t-1}, x_{t-2},...x_{t-4}$  for the quakes time series.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+#| fig-cap: Relationship Between Lags of Quakes and Itself (lags = 1,2,3,4)
+
+quakes_lags_ar_1 <- RtsaPkg::graph_lead_lag(
+  df = quakes_dt,
+  time_col = "date",
+  value_col = "data",
+  rot_y_tic_label = TRUE,
+  show_fit = TRUE,
+  display_plot = FALSE
+)
+grid::grid.newpage()
+grid::grid.draw(quakes_lags_ar_1$plots)
+```
+
+The plot appears to have a slight positive linear association at lag 1, so AR(1) model might be a useful model. 
+
+:::topic
+Show the statistical summary for the lag 1 linear regression.
+:::
+```{r}
+quakes_ar1_model <- quakes_lags_ar_1$models$lag_1
+summary(quakes_ar1_model)
+```
+
+The model is essentially the ordinary simple linear equation.  
+The algebraic expression of the AR(1) model is:
+$$x_t = \delta + \phi_1x_{t-1} + w_t$$
+where the error terms $w_t \overset{iid}{\backsim} N(0,\sigma_w^2)$.
+
+It appears that the slope coefficient is significantly different from 0, so AR(1) is a helpful predictor.  The $R^2$ is relatively weak so the model won't give us great predictions.
+
+### The AR(1) fit residual analysis
+
+:::topic
+Plot the fitted values of $x(t)$ with corresponding AR(1) fitted residuals.
+:::
+
+The structure of *quakes_ar1_model* model variable:
+```{r}
+str(quakes_ar1_model$model)
+```
+
+Plot "Predictions" vs "Residuals" from *quakes_ar1_model*.
+```{r}
+#| fig-cap: Residuals of Predicting Quakes(t) from Quakes(t-1)
+
+predict_dt <- data.table::as.data.table(quakes_lags_ar_1$predictions[[1]]) %>% 
+  .[, index := 1:98]
+
+RplotterPkg::create_scatter_plot(
+  df = predict_dt,
+  aes_x = "Predictions",
+  aes_y = "Residuals",
+  aes_label = "index",
+  aes_label_size = 2,
+  x_title = "Fitted Value",
+  y_title = "Residual",
+  pts_fill = "red",
+  rot_y_tic_label = TRUE
+) + ggplot2::geom_hline(aes(yintercept = 0), color = "red", linetype = "dashed", lwd = 1)
+```
+
+### Autocorrelation function (ACF)
+
+The autocorrelation function for a series gives the correlations between the series $x_t$ and $x_{t-1}$, and $x_t$ and $x_{t-2}$ and so on for lags 1,2,3,..k.
+The autocorrelation is useful for both identifying the order of the AR portion of ARIMA and for checking the lag correlations across the residual series. The correlations for the residual series should not be significant across all the lags.
+
+:::topic
+Plot 18 lags of the ACF of the residuals from the quakes series.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: Autocorrelation for Residuals of Quakes AR(1) Model Fit
+
+acf_quake_residuals <- RtsaPkg::graph_acf(
+  df = quakes_lags_ar_1$predictions[[1]],
+  time_col = "DateTime",
+  value_col = "Residuals",
+  max_lag = 18,
+  confid_level = 1.96,
+  show_obs = FALSE,
+  show_pc = FALSE,
+  ac_x_limits = c(1,18),
+  bold_y = 0.0,
+  row_height = 6
+)
+```
+
+Appears that none of the lags for the models AR(1) residuals are significant.  Residuals usually are theoretically assumed to have an ACF that has correlation = 0 for all lags.
+
+## Sample ACF and properties of AR(1) model
+
+### Stationary series
+* Definition for *weakly stationary* series:
+    + The mean $E(x_t)$ is the same for all $t$.
+    + The variance of $x_t$ is the same for all $t$.
+    + The covariance (and also correlation) between $x_t$ and $x_{t-h} is the same for all $t$ at each lag $h$ = 1,2,3, etc.
+
+Definition of Autocorrelation Function (ACF) for a stationary series between $x_{t}$ and $x_{t-h}$:
+$$\frac{Covariance(x_t,x_{t-h})}{SD(x_t)SD(x_{t-h})} = \frac{Covariance(x_t,x_{t-h})}{Variance(x_t)}$$
+The denominator in the second formula occurs because the sd of a stationary series is the same at all times.
+
+> Many stationary series have recognizable ACF patterns. Most series that we encounter in practice, however, are not stationary. A continual upward trend, for example, is a violation of the requirement that the mean is the same for all $t$. Distinct seasonal patterns also violate that requirement.
+
+### The first order autoregression model
+
+The algebraic expression of the AR(1) model is:
+
+$$x_t = \delta + \phi_1x_{t-1} + w_t$$
+* Assumptions:
+    + $w_t \overset{iid}{\backsim} N(0,\sigma_w^2)$ - errors are independently distributed with a normal distribution that has mean 0 and constant variance.
+    + properties of the errors $w_t$ are independent of $x$.
+    + the series $x_1, x_2,...$ is weakly stationary. A requirement for a stationary AR(1) model is that $|\phi|$ < 1.
+
+* Properties of the AR(1) include:
+    + (theoretical)mean of $x_t$: $$E(x_t) = \mu = \delta/(1 - \phi_1)$$
+    + variance of $x_t$: $$Var(x_t) = \sigma_w^2/(1 - \phi_1^2)$$
+    + correlation between observations h time periods apart is: $$\rho_h = \phi_1^h$$
+
+Note: $\phi_1$ is the slope in the AR(1) model and it is also the lag 1 autocorrelation (h = 1).
+
+### Pattern of ACF for AR(1) model
+
+:::topic
+Simulate an AR(1) model with lag 1 autocorrelation of 0.6.
+:::
+
+Create the AR(1) simulated model.
+```{r}
+ar_1_positive_ts <-  stats::arima.sim(list(ar = c(0.6)), n = 1000)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(ar_1_positive_ts, n_obser = 6)$data,
+  container_width_px = 400
+)
+```
+
+Plot the ACF.
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: ACF for AR(1) with Phi = 0.6
+
+ar_1_positive_dt <-  RtsaPkg::tsObj_to_dt(ar_1_positive_ts)
+
+ar_1_positive <- RtsaPkg::graph_acf(
+  df = ar_1_positive_dt,
+  time_col = "time",
+  value_col = "value",
+  max_lag = 12,
+  confid_level = 1.96,
+  ac_x_limits = c(1,12),
+  show_obs = FALSE,
+  show_pc = FALSE,
+  show_minor_grids = FALSE,
+  bold_y = 0.0,
+  row_height = 6
+)
+```
+
+For AR(1) we see a tapering pattern where for positive $\phi_1$, the ACF exponentially decreases to 0 with increasing lags.
+
+:::topic
+Simulate an AR(1) model with lag 1 autocorrelation of -0.7.
+:::
+
+Simulate the AR(1).
+```{r}
+ar_1_negative_ts <-  stats::arima.sim(list(ar = c(-0.7)), n = 1000)
+```
+
+Plot the AR(1).
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: ACF for AR(1) with Phi = -0.7
+
+ar_1_negative_dt <-  RtsaPkg::tsObj_to_dt(ar_1_negative_ts)
+
+ar_1_negative <- RtsaPkg::graph_acf(
+  df = ar_1_negative_dt,
+  time_col = "time",
+  value_col = "value",
+  max_lag = 12,
+  confid_level = 1.96,
+  ac_x_limits = c(1,12),
+  show_obs = FALSE,
+  show_pc = FALSE,
+  show_minor_grids = FALSE,
+  bold_y = 0.0,
+  row_height = 6
+)
+```
+
+The AR(1) with a negative $\phi_1$ also decays exponentially but with the algebraic signs for the autocorrelation alternate between positive and negative.
+
+Example 1-3 ACF of the quakes series.
+
+:::topic
+Compute and plot the ACF of the quakes time series data set.  
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: ACF for Quakes Time Series
+
+quakes_acf <- RtsaPkg::graph_acf(
+  df = quakes_dt,
+  time_col = "date",
+  value_col = "data",
+  max_lag = 12,
+  confid_level = 1.96,
+  ac_x_limits = c(1,12),
+  show_obs = FALSE,
+  show_pc = FALSE,
+  show_minor_grids = FALSE,
+  bold_y = 0.0,
+  display_plot = FALSE,
+  row_height = 6
+)
+grid::grid.newpage()
+grid::grid.draw(quakes_acf$plot)
+```
+
+The values of the lag 1 to lag 4 autocorrelation are shown below. Compare lag 1 (.5417) with the lag 1 coefficient (0.54339) that we found above in the linear regression.
+
+```{r}
+quakes_acf$acf_df[1:5,]
+```
+
+The expression for correlation $\rho_h = \phi_1^h$ imples that $lag2 \approxeq lag1^2$. $lag1^2 = .2935$ which is somewhat less than 0.419.  Important point--the sample ACF will rarely fit a perfect theoretical pattern.
+
+Example 1-4 Daily cardiovascular mortality time series
+
+:::topic
+Plot the daily cardiovascular mortality time series.
+:::
+
+Read in the data and create a data.frame.
+```{r}
+apath <- file.path(here::here(), "PennState Course", "data", "cmort.dat")
+cardio_vec <- scan(apath)
+cardio_df <- data.frame(
+  date = seq(from = as.Date("1970-01-01"), by = "week", length.out = 508),
+  data = cardio_vec
+)
+str(cardio_df)
+```
+Plot cardio_df:
+```{r}
+#| fig-width: 12
+#| fig-height: 6
+#| fig-cap: Weekly Cardiovascular Mortality Rate, Los Angeles County, 1970-1979
+
+RplotterPkg::create_scatter_plot(
+  df = cardio_df,
+  aes_x = "date",
+  aes_y = "data",
+  x_title = "Month-Year",
+  y_title = "Mortality",
+  x_major_date_breaks = "6 month",
+  x_date_labels = "%b%y",
+  y_limits = c(65,135),
+  y_major_breaks = seq(65,135,10),
+  rot_y_tic_label = TRUE,
+  connect = TRUE,
+  pts_fill = "red",
+  pts_color = "blue"
+)
+```
+
+Slight downward trend, so series may not be stationary. To de-trend, examine first differences $y_t = x_t - x_{t-1}$.
+
+Also note that the rate appears to peak each year around the Christmas-New Year holiday period.
+
+:::topic
+Take first differences of the cardio time series.
+:::
+
+```{r}
+#| fig-width: 12
+#| fig-height: 6
+#| fig-cap: First Differences for the Cardio Time Series, Los Angeles County, 1970-1979
+
+cardio_diff <-  RtsaPkg::graph_dif(
+  df = cardio_df,
+  time_col = "date",
+  value_col = "data",
+  x_title = "Month-Year",
+  y_title = "Mortality",
+  x_major_date_breaks = "6 month",
+  x_date_labels = "%b%y",
+  show_obs = FALSE,
+  show_pts = FALSE,
+  display_plot = FALSE,
+  col_width = 26
+)
+grid::grid.newpage()
+grid::grid.draw(cardio_diff$plot)
+```
+
+The trend appears to be removed.
+
+:::topic
+Plot the ACF of the cardio differences.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| fig-cap: Autocorrelation of First Differences for the Cardio Time Series
+
+cardio_diff_acf <- RtsaPkg::graph_acf(
+  df = cardio_diff$diff_df,
+  time_col = "datetime",
+  value_col = "diffvalue",
+  max_lag = 30,
+  ac_x_limits = c(1,30),
+  ac_x_major_breaks = seq(1,30,1),
+  show_obs = FALSE,
+  show_pc = FALSE,
+  show_minor_grids = FALSE,
+  confid_level = 1.96,
+  bold_y = 0.0,
+  display_plot = FALSE,
+  row_height = 6
+  
+)
+grid::grid.newpage()
+grid::grid.draw(cardio_diff_acf$plot)
+```
+
+Show the first five acf values:
+```{r}
+cardio_diff_acf$acf_df[(1:5),]
+```
+The ACF pattern looks like a AR(1) with a negative $lag_1$ autocorrelation.  Also the powers of $lag_1$ are close to the values of the other $lag_2^2$, $lag_3^3$... .*
+
+:::topic
+Plot the relationship of the cardio series with its various lagged series.
+:::
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+#| fig-cap: CardioDiff(t) vs CardioDiff(t-k) for Cardio Differences Series
+
+cardio_diff_df <- cardio_diff$diff_df
+
+cardio_diff_lag <- RtsaPkg::graph_lead_lag(
+  df = cardio_diff_df,
+  time_col = "datetime",
+  value_col = "diffvalue",
+  rot_y_tic_label = TRUE,
+  show_fit = TRUE,
+  display_plot = FALSE
+)
+grid::grid.newpage()
+grid::grid.draw(cardio_diff_lag$plot)
+```
+
+Appears to be a slight negative relationship for lag 1 implying an AR(1) model with a negative coefficient.
+This is in line with the lag 1 ACF from above with a value of -0.5060.
+
+:::topic
+Apply the summary() function to the model for lag 1 from *cardio_diff_lag$models*.
+:::
+
+```{r}
+summary(cardio_diff_lag$models$lag_1)
+```
+
+The coefficient *lag_1* is significant at -0.506 but the $R^2$ at 0.256 is weak.

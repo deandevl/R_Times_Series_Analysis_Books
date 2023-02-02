@@ -1,0 +1,474 @@
+---
+title: "Hands-on Time Series Analysis with R"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: true
+    number-offset: 3
+    self-contained: true
+    smooth-scroll: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    code-fold: true
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes/scripts/plots are inspired by chapter 4 'Working with zoo and xts objects' of the book [Hands-on Time Series Analysis with R](https://github.com/PacktPublishing/Hands-On-Time-Series-Analysis-with-R) by Rami Krispin"
+---
+```{r}
+#| message: false
+#| warning: false
+
+library(xts)
+library(zoo)
+library(data.table)
+library(RplotterPkg)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+# Working with zoo and xts Objects
+
+## The *zoo* class
+
+"zoo" is comprised of two elements:
+
+1. Data structure: A vector or matrix format
+2. Index vector: Stores the series observation's corresponding index
+
+:::topic
+An example of "zoo" is the Brent Crude Oil Prices series.
+:::
+
+```{r}
+EURO_Brent_data_path <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "EURO_Brent.rda")
+load(EURO_Brent_data_path)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = EURO_Brent)$stats,
+  container_width_px = 400
+)
+```
+`EURO_Brent` is a monthly time series that starts May, 1987 and ends Dec, 2019 for a total of 392 months.
+
+### The "zoo" class attributes
+
+"zoo" can handle both regular and irregular spaced time series data.
+
+:::topic
+Use `class(zoo time series object)` in determining regular/irregular.
+:::
+
+```{r}
+class(EURO_Brent)
+```
+If the "zoo" time series object is regular we can apply `frequency()` and `cycle()`:
+```{r}
+base::cat("Frequency: ", stats::frequency(EURO_Brent),"\n")
+base::cat("Cycles: ", head(cycle(EURO_Brent), 6),"\n")
+base::cat("Start: ", stats::start(EURO_Brent), "\n")
+base::cat("End: ", stats::end(EURO_Brent), "\n")
+base::cat("Starting Time: ", head(stats::time(EURO_Brent), 6), "\n")
+```
+### The index of the "zoo" object
+
+Unlike the index of the "ts" class, the "zoo" index supports the use of external date and time objects as the series index.
+
+:::topic
+Use the `zoo::index()` function to view the first indexes of EURO_Brent.
+:::
+
+```{r}
+base::cat("Starting indexes: ", head(zoo::index(EURO_Brent), 6))
+```
+The "zoo" index is an independent object with its own `attributes()` and `class()` functions.
+
+Using `class()`:
+```{r}
+base::cat("Class: ", class(zoo::index(EURO_Brent)))
+```
+
+Using `attributes()`
+
+```{r}
+printfun <- function(nm, x){
+  return(paste0(nm, ": ", x, "\n"))
+}
+list_names <- names(attributes(zoo::index(EURO_Brent)))
+ans <- mapply(printfun, list_names, attributes(zoo::index(EURO_Brent)),USE.NAMES = FALSE)
+cat(ans)
+```
+
+You can convert the "zoo" index to other classes as long as it is applicable.
+```{r}
+EURO_Brent_date_zoo <- EURO_Brent  # make a copy
+zoo::index(EURO_Brent_date_zoo) <- as.Date(zoo::index(EURO_Brent))
+
+base::cat("Zoo Index: ", head(zoo::index(EURO_Brent_date_zoo)), "\n")
+base::cat("Dates: ", head(base::format(zoo::index(EURO_Brent_date_zoo)), format="%Y-%m-%d"), "\n")
+base::cat("Index Class: ", class(index(EURO_Brent_date_zoo)))
+```
+### Working with date and time objects
+
+"zoo" package contains a number of utility functions for converting time.  For example `as.yearmon()` and `as.yearqtr()` can convert "Date" objects to "yearmon" or "yearqtr" objects.
+
+```{r}
+monthly_dates <- base::format(seq(as.Date("2019-01-01"), length.out = 12, by = "month"), format="%Y-%m-%d")
+base::cat("Dates: ", monthly_dates, "\n")
+monthly_yearmon <- zoo::as.yearmon(monthly_dates)
+base::cat("yearmon: ", monthly_yearmon)
+```
+Note that if the "Date" object has a day component then it is lost with the above conversion.
+
+### Creating a "zoo" object
+
+Creating a "zoo" object follows the same logic as creating a "ts" object:
+
+1. Convert an existing time series object using the `as.zoo()` function.
+2. Create a "zoo" object with the `zoo()` function using a numeric vector as input
+
+:::topic
+Convert a "data.frame" object to a "zoo" object with the `zoo()` function. 
+:::
+
+Using the *US_indicators* data set.
+```{r}
+US_indicators_data_path <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "US_indicators.rda")
+load(US_indicators_data_path)
+str(US_indicators)
+```
+Set the frequency argument of `zoo()` to 12:
+```{r}
+vehicle_sales_zoo <- zoo(x = US_indicators$`Vehicle Sales`, frequency = 12)
+base::cat("Class: ", class(vehicle_sales_zoo), "\n")
+base::cat("Frequency: ", stats::frequency(vehicle_sales_zoo), "\n")
+base::cat("Values: ", head(vehicle_sales_zoo), "\n")
+base::cat("Zoo indexes: ", head(zoo::index(vehicle_sales_zoo)), "\n")
+base::cat("Index class: ", class(zoo::index(vehicle_sales_zoo)), "\n")
+base::cat("Is regular?: ", zoo::is.regular(vehicle_sales_zoo, strict = TRUE))
+```
+> Note that the index is a sequence of ordered integers of class "yearmon" and is a regular time series.  A strictly regular time series is any series where all the observations of the series are equally spaced.
+
+> Both "zoo" and "xts" time series can have time index classes of "Date", "POSIXct", "chron", "yearmon", "yearqtr", and "DateTime" classes.
+
+> The *order_by* argument of `zoo()` can be used to set the *index* operator of the output object. 
+
+:::topic
+Set the *Vehicle Sales* data set to a "zoo" object with the *order.by* argument set to its "Date" variable.
+:::
+
+```{r}
+vehicle_sales_zoo <- zoo(x = US_indicators$`Vehicle Sales`, order.by = US_indicators$Date, frequency = 12)
+base::cat("Values: ", head(vehicle_sales_zoo), "\n")
+base::cat("Index class: ", class(index(vehicle_sales_zoo)), "\n")
+base::cat("Zoo indexes: ", head(index(vehicle_sales_zoo)), "\n")
+base::cat("Dates: ", head(format(index(vehicle_sales_zoo), format="%Y-%m-%d")), "\n")
+base::cat("Is regular?:", zoo::is.regular(vehicle_sales_zoo, strict = TRUE))
+```
+Note that *order_by* preserves the class of "Date" as *Date*. Using the "Date" as an index creates some ambiguity, as the distance between each observation could be 28, 29, 30, or 31 days. The series is strictly irregular.
+
+### Working with multiple time series objects
+
+:::topic
+From the data.frame *US_indicators*, create a "zoo" object with both "Vehicle Sales" and "Unemployment Rate" variables.
+:::
+
+```{r}
+US_indicators_zoo <- zoo(
+  x = US_indicators[,c("Vehicle Sales", "Unemployment Rate")],
+  order.by = US_indicators$Date
+)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = US_indicators_zoo)$data,
+  container_width_px = 600
+)
+
+base::cat("Index class: ", class(index(US_indicators_zoo)), "\n")
+base::cat("Dates: ", head(format(zoo::index(US_indicators_zoo), format="%Y-%m-%d")), "\n")
+base::cat("Is regular?: ", zoo::is.regular(US_indicators_zoo, strict = FALSE))
+```
+Note that we set the zoo index to `Date` which would make the series irregular. But we set the `is.regular()` parameter "strict" to 'FALSE`, which does not apply strict criteria and so the result is 'TRUE`. The series is still irregular in a strict sense.
+
+## The "xts" class
+
+"xts" is an extension of the "zoo" class with additional attributes.  Any of the "zoo" functions can be applied to the "xts" object.
+
+:::topic
+Review the "xts" Michigan_CS data set.
+:::
+
+```{r}
+Michigan_CS_data_path <- file.path(here::here(), "Hands-on Time Series Analysis with R", "data", "Michigan_CS.rda")
+load(Michigan_CS_data_path)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = Michigan_CS)$stats,
+  container_width_px = 450
+)
+base::cat("Series class: ", class(Michigan_CS))
+```
+Note that the class of the series is both "xts" and "zoo" and carries both class functions.
+
+:::topic
+Use some functions on the "xts" object like we did with `zoo::`.
+:::
+
+Using `class()` and `frequency()`.
+
+```{r}
+base::cat("Index class: ", base::class(index(Michigan_CS)), "\n")
+base::cat("Frequency: ", stats::frequency(Michigan_CS))
+```
+Using `head()` which outputs a matrix:
+```{r}
+head(Michigan_CS)
+```
+Using `is.regular()`:
+```{r}
+base::cat("Is regular?: ", zoo::is.regular(Michigan_CS))
+```
+> One of the improvements of the "xts" class is the matrix format structure of the object as opposed to the vector of the "zoo" class.
+
+:::topic
+Show the matrix format of the univariate`Michigan_CS` "xts" object.
+:::
+
+```{r}
+Michigan_CS[1:6,]
+```
+
+:::topic
+Create an "xts" multivariate time series object from the US_indicators data.frame using `xts()`.
+:::
+
+```{r}
+US_indicators_xts <- xts(x = US_indicators[ ,c("Vehicle Sales", "Unemployment Rate")],
+  frequency = 12,
+  order.by = US_indicators$Date
+)
+US_indicators_xts[1:6,]
+```
+
+### The "xts" class attributes
+
+> For the univariate case, "zoo" has a vector structure; "xts" has a matrix structure. The uniqueness of "xts" is in its functionality.
+
+### The xts functionality
+
+#### The periodicity function
+
+:::topic
+Retrieve the periodicity of the Michigan_CS "xts" object.
+:::
+
+```{r}
+periodicity <- xts::periodicity(Michigan_CS)
+unlist(periodicity)
+periodicity
+```
+#### Manipulating the object index
+
+`indexClass()` is deprecated. Use `tclass()`.
+
+`xts::tclass()` both sets and retrieves the index class of an "xts" object.
+
+:::topic
+Retrieve the index class of Michigan_CS "xts" object.
+:::
+
+```{r}
+base::cat("Index class: ", xts::tclass(Michigan_CS))
+```
+:::topic
+Convert the index of an "xts" object from *yearmon* to *Date*.
+:::
+
+`convertIndex()` returns  a modified "xts" object and does not alter the original.
+
+```{r}
+Michigan_CS_date_xts <- xts::convertIndex(Michigan_CS, "Date")
+base::cat("Index class: ", xts::tclass(Michigan_CS_date_xts))
+```
+:::topic
+Retrieve the month component of the index.
+:::
+
+```{r}
+base::cat("Month component: ", xts::.indexmon(Michigan_CS)[1:24])
+```
+:::topic
+Change the format of the index.
+:::
+
+`indexFormat()` is deprecated. Use `tformat()`.
+
+```{r}
+Michigan_CS_mdy_xts <- Michigan_CS
+xts::tformat(Michigan_CS_mdy_xts) <- "%m-%d-%Y"
+Michigan_CS_mdy_xts[1:6,]
+base::cat("Index class: ", xts::tclass(Michigan_CS_mdy_xts))
+```
+
+#### Subsetting an xts object based on the index properties
+
+:::topic
+Extract from an "xts" object a subset of data based on its index.
+:::
+
+Using the multivariate *US_indicators_xts* object created above get the first 12 months:
+```{r}
+vehicle_sales_xts <- US_indicators_xts$`Vehicle Sales`[1:12]
+
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = vehicle_sales_xts)$data,
+  container_width_px = 400
+)
+```
+
+## Manipulating the zoo and xts objects
+
+### Merging time series objects
+
+In merging the first step is to review the indexes of two merging objects. As an example Michigan_CS (an "xts" object) with EURO_Brent (a "zoo" object):
+```{r}
+base::cat("zoo index class: ", class(zoo::index(EURO_Brent)), "\n")
+base::cat("xts index class: ", xts::tclass(Michigan_CS))
+```
+
+Second step is to review any overlap:
+```{r}
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = Michigan_CS)$stats,
+  container_width_px = 400
+) 
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = EURO_Brent)$stats,
+  container_width_px = 400
+) 
+
+```
+There is overlap, so the third step is to use `merge.xts()` function:
+
+```{r}
+merge_outer_xts <- xts::merge.xts(Michigan_CS_xts = Michigan_CS, EURO_Brent_zoo = EURO_Brent, join = "outer")
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = merge_outer_xts["1987"])$data,
+  container_width_px = 400
+) 
+head(merge_outer_xts["1987"])
+```
+
+### Rolling windows
+
+:::topic
+Use `zoo::rollapply()` to calculate a 3 month, moving average for the EURO_Brent *zoo* series.
+:::
+
+Review EURO_Brent:
+```{r}
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = EURO_Brent)$stats,
+  container_width_px = 400
+) 
+```
+
+```{r}
+EURO_Brent_3ma <- zoo::rollapply(EURO_Brent, width = 3, FUN = mean)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = EURO_Brent_3ma)$stats,
+  container_width_px = 400
+) 
+```
+> The new series is missing the first and last observations from the original series. We cannot create a window for the first and last observations.
+
+### Creating lags
+
+:::topic
+Use the `stats::lag()` to create a 3 month lag of the EURO_Brent "zoo" object.
+:::
+
+```{r}
+EURO_Brent_lag3 <- stats::lag(EURO_Brent, k = -3)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = EURO_Brent_lag3)$data,
+  container_width_px = 400
+) 
+```
+We have lost the first 3 months of the original series.
+
+:::topic
+Merge both the lag series with the original series.
+:::
+
+```{r}
+EURO_Brent_lag_3_zoo <- zoo::merge.zoo(EURO_Brent, EURO_Brent_lag3)
+head(EURO_Brent_lag_3_zoo)
+```
+
+### Aggregating the zoo and xts objects
+
+:::topic
+Use `stats::aggregate()` to aggregate the EURO_Brent "zoo" object from monthly to quarterly.
+:::
+
+```{r}
+EURO_Brent_qtr_zoo <- stats::aggregate(EURO_Brent, by = zoo::as.yearqtr, FUN = sum)
+RplotterPkg::create_table(
+  x = RtsaPkg::get_series_info(series = EURO_Brent_qtr_zoo)$stats,
+  container_width_px = 450
+) 
+```
+
+:::topic
+Aggregate EURO_Brent using `lubridate::year()`.
+:::
+
+```{r}
+EURO_Brent_yr_zoo <- stats::aggregate(EURO_Brent, by = lubridate::year, FUN = sum)
+head(EURO_Brent_yr_zoo)
+```
+
+### Plotting zoo and xts objects
+If we are using ggplot2 then the "zoo" and "xts" objects must be converted to a "data.frame".
+The key function to use is `zoo::fortify.zoo()`.
+
+:::topic
+Plot with ggplot2 the "zoo" EURO_Brent.
+:::
+
+Convert the "zoo" object.
+```{r}
+EURO_Brent_df <- zoo::fortify.zoo(EURO_Brent)
+base::cat("Class of fortify.zoo: ", class(EURO_Brent_df), "\n")
+head(EURO_Brent_df)
+```
+Rename columns:
+```{r}
+colnames(EURO_Brent_df) <- c("Index", "EURO_Brent")
+```
+Plot the "data.frame":
+```{r}
+#| fig-width: 10
+
+RplotterPkg::create_scatter_plot(
+  df = EURO_Brent_df,
+  aes_x = "Index",
+  aes_y = "EURO_Brent",
+  x_major_date_breaks = "1 month",
+  x_date_labels = "%Y-%m",
+  connect = T,
+  show_pts = F
+)
+```
+
+### xts or ts -- which one to use
+> ..."xts" objects have more benefits compared to "ts" objects, since most of the forecasting models in R support only "ts" objects. 
+

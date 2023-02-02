@@ -1,0 +1,149 @@
+---
+title: "Analysis of Time Series-An Introduction"
+author: "Rick Dean"
+format:
+  html:
+    toc: false
+    toc-depth: 4
+    toc-location: "right"
+    number-sections: false
+    number-offset: 0
+    self-contained: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-bg: "#f1f3f5"
+    code-block-border-left: "#31BAE9"
+    code-overflow: wrap
+    tbl-cap-location: "bottom"
+    fig-width: 5
+    fig-height: 5
+    fig-align: "center"
+    fig-cap-location: "bottom"
+    minimal: false
+    css: ../../style.css
+    link-external-newwindow: true
+    abstract-title: "Abstract"
+    abstract: "The following notes/scripts/plots are inspired by the book [The Analysis of Time Series: An Introduction](http://www.ams.sunysb.edu/~xing/tsRbook/index.html) by Chris Chatfield and Haipeng Xing"
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(data.table)
+library(ggplot2)
+library(grid)
+library(gtable)
+library(RplotterPkg)
+library(RtsaPkg)
+```
+
+# 3 Some Linear Time Series Models
+
+## 3.4 Purely Random Processes
+
+:::topic
+Compute and display a purely random series and its autocorrelation.
+::: 
+
+Create 500 points of a random series with 0 mean and variance of 1.
+
+```{r}
+random_df <- data.frame(
+  Time = seq(1,500,1),
+  Series = rnorm(n = 500, mean = 0, sd = 1)
+)
+```
+
+```{r}
+#| fig-width: 10
+#| fig-cap: Autocorrelation from a Random Normal Distribution
+
+RtsaPkg::graph_acf(
+  df = random_df,
+  time_col = "Time",
+  value_col = "Series",
+  confid_level = 1.96
+)
+```
+
+## 3.5 Random Walks
+
+Suppose that $Z_t$ is a purely random process with mean $\mu$ and variance $\sigma_Z^2$. A process $X_t$ is said to be a random walk if
+$$X_t = X_{t-1} + Z_t$$
+The process starts at zero when $t = 0$ so that 
+$$X_1 = Z_1$$
+and 
+$$X_t = \sum_{i=1}^tZ_i$$
+$X_t$ is the sum of a random process and we find that $E(X_t) = t\mu$ and $Var(X_t) = t\sigma_z^2$ since the $Z_i$'s are independent. As the mean and variance change with $t$, the process is non-stationary.
+
+It is interesting to note that the first differences of a random walk, given by:
+$$\Delta X_t = X_t - X_{t-1} = Z_t$$
+forms a purely random process, which is therefore stationary.
+The best-known examples of time series which behave like random walks are share prices on successive days. A model which often gives a good approximation to such data is:
+
+*share price on day* $t$ = *share price on day* $(t-1)$ + random error
+
+:::topic
+Create and plot a random walk process.
+:::
+
+```{r}
+random_walk_df <- data.frame(
+  Time = seq(1,500,1),
+  Series = cumsum(rnorm(n = 500, mean = 0, sd = 1))
+)
+```
+
+```{r}
+#| fig-width: 10
+#| fig-cap: Autocorrelation from a Random Walk Normal Distribution
+
+acf_random_walk <- RtsaPkg::graph_acf(
+  df = random_walk_df,
+  time_col = "Time",
+  value_col = "Series",
+  confid_level = 1.96
+)
+```
+
+The random walk appears to be non-stationary with the mean and variance changing with $t$ and that there is a significant correlation at lag 1.
+
+:::topic
+Take first differences of the above random walk and plot the ACF to check if the significant lag 1 still holds up.
+:::
+
+```{r}
+random_walk_diff <- RtsaPkg::graph_dif(
+  df = random_walk_df,
+  time_col = "Time",
+  value_col = "Series",
+  show_pts = FALSE,
+  show_obs = FALSE,
+  display_plot = FALSE
+)
+```
+
+Plot the ACF/PACF of the random walk's first order differences:
+```{r}
+#| fig-width: 10
+#| fig-cap: ACF & PACF of Random Walk First Differences
+
+graph_acf(
+  df = random_walk_diff$diff_df,
+  time_col = "datetime",
+  value_col = "diffvalue",
+  title = "",
+  confid_level = 1.96,
+  show_obs = FALSE,
+  bold_y = 0.0
+)
+```
+
+Appears that we are back to a stationary random process without any significant lags.
+
+## 3.6 Moving Average Processes
+
+### 3.6.1 Stationarity and autocorrelation function of an MA process
+
+
